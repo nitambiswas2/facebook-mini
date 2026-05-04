@@ -1,0 +1,9 @@
+debug.log
+mylog.txt
+*.log
+__pycache__/
+*.pyc
+.vscode/
+venv/
+*.db
+static/uploads/
