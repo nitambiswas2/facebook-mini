@@ -5,18 +5,29 @@ from werkzeug.utils import secure_filename
 from flask import jsonify
 
 app = Flask(__name__)
-app.secret_key = "secretkey"
+# app.secret_key = "secretkey"
+
+# db = mysql.connector.connect(
+#    host="localhost",
+#    user ="root",
+#    password = "121997",
+#    database = "facebook_clone",
+#    autocommit=True
+# )
 
 db = mysql.connector.connect(
-   host="localhost",
-   user ="root",
-   password = "121997",
-   database = "facebook_clone",
-   autocommit=True
+   host=os.getenv("DB_HOST"),
+   user=os.getenv("DB_USER"),
+   password=os.getenv("DB_PASSWORD"),
+   database=os.getenv("DB_NAME")
 )
+
+app.secret_key = os.getenv("SECRET_KEY")
 
 UPLOAD_FOLDER = "static/uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 cursor = db.cursor()
 
@@ -611,4 +622,4 @@ def deletePost(postid):
    return jsonify({"delete" : True})
 
 if __name__ == "__main__":
- app.run(debug=True, use_reloader=False)
+ app.run(use_reloader=False)
