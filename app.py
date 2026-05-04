@@ -622,4 +622,5 @@ def deletePost(postid):
    return jsonify({"delete" : True})
 
 if __name__ == "__main__":
- app.run(use_reloader=False)
+#  app.run(use_reloader=False)
+ app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
