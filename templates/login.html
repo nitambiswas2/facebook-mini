@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <title>Document</title>
+</head>
+<body>
+
+  <div class="login_container">
+
+    <div><h1>facebook-mini</h1></div>
+    <div class="login">
+      <form action="{{url_for('login')}}" method="POST">
+        <div class="login_msg">{{msg}}</div>
+        <div><input class="login_username" type="text" name="username" placeholder="USERNAME"></div>
+        <div><input class="login_password" type="password" name="password" placeholder="PASSWORD"></div>
+        <div class="login_submit_button_div"><button class="login_submit">Login</button></div>
+        <div class="login_registration"><p>Don't have an account   <a href="/registration">Registration</a></p></div>
+      </form>
+    </div>
+
+  </div>
+
+</body>
+</html>

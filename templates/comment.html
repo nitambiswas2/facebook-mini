@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <title>Document</title>
+</head>
+<body>
+
+    
+    <div class="comments">
+       <h1>Comments</h1>
+       {% if comments %}
+          {% for c in comments %}
+               <div class="comment_page">
+                 <div class="comment_page_photo"><a href="/profile/{{c.username}}"><img src="{{url_for('static', filename='uploads/' + (c.profile_photo if c.profile_photo else 'default.png'))}}" width="40"; height="40" ></a></div>
+                 <div class="comment_page_name"><p>{{c.name}} :</p></div>
+                 <div class="comment_page_comment"><p>{{c.comment}}</p></div>
+               </div> 
+           {% endfor %}  
+       {% else %}
+       <p>No comments yet</p>
+       {% endif %}
+    </div>
+
+</body>
+</html>

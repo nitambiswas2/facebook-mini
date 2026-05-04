@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <title>Document</title>
+</head>
+<body>
+  <div class="add_a_post_edit_page">
+
+    <form action="{{url_for('add_a_post')}}", method="POST", enctype="multipart/form-data">
+      <div class="add_a_post_edit_photo_div"> 
+        <img class="add_a_post_edit_photo" src="{{url_for('static', filename='uploads/' + (user.photo if user.photo else 'default.png'))}}" width="200">
+      </div>
+      <div class="add_a_post_edit_input_file_div"><input type="file" name="photo"></div>
+      <div class="add_a_post_edit_save_button_div"><button class="add_a_post_edit_save_button">Save</button></div>
+    </form>
+
+  </div>
+</body>
+</html>

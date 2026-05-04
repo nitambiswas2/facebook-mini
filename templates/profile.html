@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <title>Document</title>
+</head>
+<body>
+    <div class="profile">
+
+       <div class="profile_profile">
+          <div class="profile_profile_photo_div">
+              <img  class="profile_profile_photo" src="{{url_for('static', filename='uploads/' + (user.profile_photo if user.profile_photo else 'default.png'))}}" width="200px">
+          </div>
+          <div class="profile_profile_name">NAME : {{user1.name}}</div>
+          <div class="profile_profile_about">ABOUT : {{user1.about}}</div>
+
+          {% if logged_user == username %}
+          <div class="profile_profile_edit"><a href="/profile_edit">Edit profile</a></div>
+          {% endif %}
+
+          <!-- <div class="profile_profile_edit"><a href="/profile_edit">Edit profile</a></div> -->
+        </div>
+
+        <div class="profile_friends_photos">
+          <div class="profile_friends_photos_photos"><a href="/profile_photos/{{username}}">Photos</a></div>
+          <div class="profile_friends_photos_friends"><a href="/my_friends/{{username}}">My Friends</a></div>
+        </div>
+
+      <!-- <div>
+        <h1>friends</h1>
+        {% for data in datas %}
+        <a href="/profile/{{data.from_user}}"><img src="{{url_for('static', filename='uploads/' + (data.profile_photo if data.profile_photo else 'default.png'))}}" width="40px"></a>
+        {{data.name}}
+        <button>unfriend</button>
+        {% endfor %}
+      </div> -->
+
+     <!-- <div>
+        {% if logged_user != username %}
+        <form action="/friend_request/{{username}}", method="POST">
+         <button>
+            {% if request.friend_request_by_user %}
+            friend request sent
+            {% else %}
+            friend request
+            {% endif %}
+         </button>
+            {% endif %}
+        </form>
+     </div> -->
+     
+        
+       {% if logged_user == username %}
+            <div class="friend_requests_box">
+        
+              <h1> Friend Requests</h1>
+               {% if datas %}
+                   {% for data in datas %}
+                        <div class="friends_request_accept_delete" id="request-{{data.from_user}}">
+        
+                         <div class="friends_request_accept_img_div"><a href="/profile/{{data.from_user}}"><img class="friends_request_img" src="{{url_for('static', filename='uploads/' + (data.profile_photo if data.profile_photo else 'default.png'))}}"></a></div>
+                         <div class="friends_request_name" ><p>{{data.name}}:</p></div>
+                         <!-- <form action="/friends/{{data.from_user}}" method="POST">
+                         <button>accept</button>
+                         </form> -->
+                   
+                         <div class="friends_request_accept_btn_div"><button class="friends_request_accept_btn" onclick="acceptRequest('{{data.from_user}}')">Accept</button></div>
+
+                         <form action="/delete_request/{{data.from_user}}" method="POST">
+                             <div class="friends_request_delete_btn_div"><button class="friends_request_delete_btn">Delete</button></div>
+                         </form>
+                  
+                        </div>
+                   {% endfor %}
+               {% else %}
+               <p>No new friend request yet</p>
+               {% endif %}
+            </div>
+       {% endif %}  
+    
+
+       <div class="friend_request">
+           {% if logged_user != username %}
+               {% if request.already_friends %}
+                 <button class="friend_request_friends_disabled-button" disabled> friends</button>
+
+                {% elif request.friend_request_by_user %}
+                 <button class="friend_request_friend_request_sent_disabled_button" disabled> friend request sent</button>
+
+                {% else %}
+                 <form action="/friend_request/{{username}}" method="POST">
+                     <button class="profile_request_button">friend request</button>
+                 </form>
+               {% endif %}
+           {% endif %}
+       </div>
+      
+    </div>
+     
+    
+    <script>
+        async function acceptRequest(user){
+            let response = await fetch("/friends/" + user, {method:"POST"});
+            let data = await response.json();
+
+            if(data.success){
+                document.getElementById("request-" + user).remove();
+            }
+        }
+    </script>
+
+    <!-- <script>
+        async function friendRequest(toUser){
+            let response = await fetch("/friend_request/" + toUser, {method:"POST"});
+            let data = await response.json();
+
+            let button = document.getElementById("request-btn-" + toUser)
+
+            if(data.request){
+                button.innerText="friend request sent";
+            }else{
+                button.innerText="friend request";
+            }
+        }
+    </script> -->
+
+</body>
+</html>

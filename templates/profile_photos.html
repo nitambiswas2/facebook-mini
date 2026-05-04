@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <title>Document</title>
+</head>
+<body>
+   
+    
+   <div class="profile_photos">
+      <h1>Photos</h1>
+      {% if users %}
+        {% for user in users %}
+       
+           <img class="profile_photos_photos" src="{{url_for('static', filename='uploads/' + user.photo )}}" height="200px"; width="200px">
+          
+           {% if logged_user == profile_owner %}
+              <form action="/delete_photo" method="POST">
+              <input type="hidden" name="photo_id" value="{{user.id}}">
+              <div class="profile_photos_button_div"><button  class="profile_photos_button" type="submit">Delete</button></div>
+              </form>
+           {% endif %}
+
+        {% endfor %}
+      {% else %}
+      <P>No photos yet</P>
+      {% endif%}
+    </div>
+
+   
+
+</body>
+</html>

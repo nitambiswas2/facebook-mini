@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <title>Document</title>
+</head>
+
+<body>
+    <div class="navbar">
+        <div class="navbar_profile"><a href="/profile/{{session['username']}}">Profile</a></div>
+        <div class="navbar_home"><a href="/home">Home</a></div>
+        <form action="{{url_for('search')}}" method="POST">
+            <div class="navbar_search">
+                <input type="text" name="name" placeholder="Search by name">
+                <button class="navbar_search_button" type="submit">Search</button>
+            </div>
+        </form>
+    
+        <div class="navbar_notifications"><a href="/notifications">Notifications</a></div>
+    </div>
+
+    <div class="navbar_panel">
+        <div class="navbar_panel_input"><a href="/add_a_post">Add a post</a></div>
+    </div>
+
+   {% if posts %}
+    {% for post in posts %}
+        <div class="add_a_post" id="add_a_post-{{post.id}}">
+    
+            <div class="add_a_post_photo">
+                
+                <div class="add_a_post_photo_top_row">
+
+                 <div class="add_a_post_photo_profile_name">
+                  <a href="/profile/{{post.username}}"><img src="{{url_for('static', filename='uploads/' + 
+                  (post.profile_photo if post.profile_photo else 'default.png'))}}" class="add_a_post_photo_profile" width="40"></a>
+                  <P>{{post.name}}</P>
+                 </div>
+
+                 <div class="menu_comtainer">
+                   <button onclick="toggleMenu('{{post.id}}')">:</button>
+
+                   <div class="menu" id="menu-{{post.id}}">
+                    <button onclick="deletePost('{{post.id}}')">delete</button>
+                   </div>
+                 </div>
+
+                </div>
+
+                <div class="add_a_post_photo_photo_div"><img src="{{url_for('static', filename='uploads/' + post.photo)}}" class="add_a_post_photo_photo"></div>
+
+                <div class="add_a_post_like_comment" >
+                 
+                   <div class="add_a_post_like">
+                     <button  class="add_a_post_like_button" type="button" id="like-btn-{{post.id}}" onclick="likePost('{{post.id}}')"> 
+                      {% if post.liked_by_user %}
+                      Unlike
+                      {% else %}
+                      Like
+                      {% endif %}
+                      </button>
+                   </div>
+
+                   <div class="add_a_post_span">
+                     <span id="like-count-{{post.id}}">
+                     {{post.like_count}} 
+                      </span>
+                   </div>
+                 
+                 <div class="add_a_post_comment">
+                     <button class="add_a_post_comment_button"><a href="/comment_save/{{post.id}}">Comments</a></button>
+                  </div>
+
+                  <div class="add_a_post_comment_save">
+                   <form action="/comment_save/{{post.id}}" method="POST">
+                    <div class= "add_a_post_comment_save2">
+                        <input type="text" name="comment" placeholder="COMMENT">
+                        <button class= "add_a_post_comment_save2_button" type="submit">Submit</button>
+                    </div>
+                  </form>
+                  </div>
+                 
+                </div>
+            
+            </div>
+        </div>
+    {% endfor %}
+
+   {% else %}
+   <p>No post yet</p>
+   {% endif %}
+    
+    
+    <!-- <script>
+
+   function likePost(postId){
+
+   fetch("/like/" + postId, {
+
+   method: "POST"
+
+   })
+
+   .then(response => response.json())
+
+   .then(data => {
+
+   document.getElementById("like-count-" + postId).innerText =
+   data.total_likes;
+
+   let button =
+   document.getElementById("like-btn-" + postId);
+ 
+   if(data.liked){
+
+   button.innerText = "Unlike";
+
+   }else{
+
+   button.innerText = "Like";
+
+   }
+
+   })
+
+   }
+
+   </script> -->
+
+   <script>
+       async function toggleMenu(postid){
+        let menu= document.getElementById("menu-" + postid);
+
+        if(menu.style.display === "block"){
+            menu.style.display = "none";
+        } else {
+            menu.style.display= "block";
+        }
+       }
+   </script>
+
+  
+
+   <script>
+    async function deletePost(postid){
+        let response = await fetch("/deletePost/" + postid, {method: "POST"});
+        let data = await response.json();
+
+        if(data.delete)
+         document.getElementById("add_a_post-" + postid).remove();
+    }
+   </script>
+
+  <script>
+    async function likePost(postid){
+        let response = await fetch("/like/" + postid, {method: "POST"});
+        let data = await response.json();
+
+        document.getElementById("like-count-" + postid).innerText = data.total_likes
+
+        let button = document.getElementById("like-btn-" + postid);
+
+        if (data.liked){
+            button.innerText = "unlike";
+        }else{
+            button.innerText = "like";
+        }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <title>Document</title>
+</head>
+<body>
+   <div class="profile_edit">
+     
+     <div class="profile_edit_profile">
+         <form action="{{url_for('profile_edit')}}", method="POST", enctype="multipart/form-data">
+            <div class="profile_edit_profile_photo_div"> 
+               <img class="profile_edit_profile_photo" src="{{url_for('static', filename='uploads/' + (user.profile_photo if user.profile_photo else 'default.png'))}}" width="200">
+            </div>
+            <div class="profile_edit_input_photo_div"><input class="profile_edit_input_photo" type="file" name="photo"></div>
+            <div  class="profile_edit_save_photo_btn_div"><button  class="profile_edit_save_photo_btn">Save</button></div>
+         </form>
+     </div>
+
+     <div class="profile_edit_name_about_button">
+        <form action="{{url_for('profile_edit')}}", method="POST">
+           <div class="profile_edit_name">NAME : <input type="text" name="name" value="{{user1.name}}"></div>
+           <div class="profile_edit_about">ABOUT : <textarea name="about" rows="2" cols="25">{{user1.about}}</textarea></div>
+           <div class="profile_edit_save_button_name_about_div"><button class="profile_edit_save_button_name_about">Save</button></div>
+        </form>
+     </div>
+
+   </div>
+    
+</body>
+</html> 
