@@ -21,4 +21,4 @@ A social media web application built with Flask and MySQL.
 - Deployment: Railway
 
 ## Live Demo
-🔗 Coming soon
+🔗 facebook-mini.up.railway.app
