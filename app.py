@@ -23,6 +23,17 @@ db = mysql.connector.connect(
    port=int(os.getenv("MYSQLPORT", 3306))
 )
 
+# def get_db():
+#     if not hasattr(get_db, 'conn') or not get_db.conn.is_connected():
+#         get_db.conn = mysql.connector.connect(
+#             host=os.getenv("DB_HOST"),
+#             user=os.getenv("DB_USER"),
+#             password=os.getenv("DB_PASSWORD"),
+#             database=os.getenv("DB_NAME"),
+#             port=int(os.getenv("MYSQLPORT", 3306))
+#         )
+#     return get_db.conn
+
 # db = mysql.connector.connect(
 #     host=os.getenv("MYSQLHOST"),
 #     user=os.getenv("MYSQLUSER"),
@@ -629,6 +640,76 @@ def deletePost(postid):
    db.commit()
 
    return jsonify({"delete" : True})
+
+@app.route("/create_tables")
+def create_tables():
+    cursor = db.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INT NOT NULL AUTO_INCREMENT,
+            username VARCHAR(50),
+            password VARCHAR(50),
+            profile_photo VARCHAR(200),
+            about TEXT,
+            name VARCHAR(100),
+            add_a_post_photo VARCHAR(200),
+            PRIMARY KEY (id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS posts (
+            id INT NOT NULL AUTO_INCREMENT,
+            username VARCHAR(50),
+            photo VARCHAR(200),
+            PRIMARY KEY (id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS likes (
+            id INT NOT NULL AUTO_INCREMENT,
+            post_id INT,
+            username VARCHAR(50),
+            PRIMARY KEY (id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS comments (
+            id INT NOT NULL AUTO_INCREMENT,
+            comment TEXT,
+            username VARCHAR(50),
+            comment_id INT,
+            name VARCHAR(100),
+            profile_photo VARCHAR(200),
+            PRIMARY KEY (id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS friend_request (
+            id INT NOT NULL AUTO_INCREMENT,
+            from_user VARCHAR(50),
+            to_user VARCHAR(50),
+            PRIMARY KEY (id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS friends (
+            id INT NOT NULL AUTO_INCREMENT,
+            from_user VARCHAR(50),
+            to_user VARCHAR(50),
+            username VARCHAR(50),
+            PRIMARY KEY (id)
+        )
+    """)
+
+    db.commit()
+    cursor.close()
+    return "All tables created successfully!"
 
 if __name__ == "__main__":
 #  app.run(use_reloader=False)
