@@ -641,75 +641,7 @@ def deletePost(postid):
 
    return jsonify({"delete" : True})
 
-@app.route("/create_tables")
-def create_tables():
-    cursor = db.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INT NOT NULL AUTO_INCREMENT,
-            username VARCHAR(50),
-            password VARCHAR(50),
-            profile_photo VARCHAR(200),
-            about TEXT,
-            name VARCHAR(100),
-            add_a_post_photo VARCHAR(200),
-            PRIMARY KEY (id)
-        )
-    """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS posts (
-            id INT NOT NULL AUTO_INCREMENT,
-            username VARCHAR(50),
-            photo VARCHAR(200),
-            PRIMARY KEY (id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS likes (
-            id INT NOT NULL AUTO_INCREMENT,
-            post_id INT,
-            username VARCHAR(50),
-            PRIMARY KEY (id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS comments (
-            id INT NOT NULL AUTO_INCREMENT,
-            comment TEXT,
-            username VARCHAR(50),
-            comment_id INT,
-            name VARCHAR(100),
-            profile_photo VARCHAR(200),
-            PRIMARY KEY (id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS friend_request (
-            id INT NOT NULL AUTO_INCREMENT,
-            from_user VARCHAR(50),
-            to_user VARCHAR(50),
-            PRIMARY KEY (id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS friends (
-            id INT NOT NULL AUTO_INCREMENT,
-            from_user VARCHAR(50),
-            to_user VARCHAR(50),
-            username VARCHAR(50),
-            PRIMARY KEY (id)
-        )
-    """)
-
-    db.commit()
-    cursor.close()
-    return "All tables created successfully!"
 
 if __name__ == "__main__":
 #  app.run(use_reloader=False)
