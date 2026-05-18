@@ -15,7 +15,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 db_pool = pooling.MySQLConnectionPool(
     pool_name="mypool",
-    pool_size=5,
+    pool_size=10,  # increased from 5 to 10
     host=os.getenv("DB_HOST"),
     user=os.getenv("DB_USER"),
     password=os.getenv("DB_PASSWORD"),
@@ -38,13 +38,13 @@ def login():
         if username and password:
             conn = get_db()
             cursor = conn.cursor(dictionary=True, buffered=True)
-
-            sql = "SELECT * FROM users WHERE username=%s AND password=%s"
-            cursor.execute(sql, (username, password,))
-            account = cursor.fetchone()
-
-            cursor.close()
-            conn.close()
+            try:
+                sql = "SELECT * FROM users WHERE username=%s AND password=%s"
+                cursor.execute(sql, (username, password,))
+                account = cursor.fetchone()
+            finally:
+                cursor.close()
+                conn.close()
 
             if account:
                 session["logginid"] = account["id"]
@@ -70,21 +70,21 @@ def registration():
         if username and password:
             conn = get_db()
             cursor = conn.cursor(dictionary=True, buffered=True)
+            try:
+                sql = "SELECT * FROM users WHERE username=%s"
+                cursor.execute(sql, (username,))
+                account = cursor.fetchone()
 
-            sql = "SELECT * FROM users WHERE username=%s"
-            cursor.execute(sql, (username,))
-            account = cursor.fetchone()
-
-            if account:
-                msg = "You already have an account"
-            else:
-                sql = "INSERT INTO users (username, password) VALUES(%s, %s)"
-                cursor.execute(sql, (username, password,))
-                conn.commit()
-                msg = "You have registered successfully"
-
-            cursor.close()
-            conn.close()
+                if account:
+                    msg = "You already have an account"
+                else:
+                    sql = "INSERT INTO users (username, password) VALUES(%s, %s)"
+                    cursor.execute(sql, (username, password,))
+                    conn.commit()
+                    msg = "You have registered successfully"
+            finally:
+                cursor.close()
+                conn.close()
         else:
             msg = "Type both username and password"
 
@@ -95,60 +95,45 @@ def registration():
 def dashboard():
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-
-    sql = """
-    SELECT
-    posts.id, 
-    posts.photo, 
-    users.profile_photo, 
-    users.username, 
-    users.name,
-
-    count(likes.id) as like_count,
-
-    sum(
-         case
-             when likes.username = %s then 1
-             else 0
-          end
-    ) as liked_by_user
-
-    FROM posts
-
-    JOIN users
-    ON posts.username = users.username
-
-    left join likes
-    on posts.id = likes.post_id
-  
-    WHERE posts.photo IS NOT NULL
-    AND (
-        posts.username = %s
-        OR posts.username IN (
-            SELECT 
-            CASE 
-                WHEN from_user = %s THEN to_user
-                ELSE from_user
-            END
-            FROM friends
-            WHERE from_user = %s OR to_user = %s
+    try:
+        sql = """
+        SELECT
+        posts.id, 
+        posts.photo, 
+        users.profile_photo, 
+        users.username, 
+        users.name,
+        count(likes.id) as like_count,
+        sum(
+             case
+                 when likes.username = %s then 1
+                 else 0
+              end
+        ) as liked_by_user
+        FROM posts
+        JOIN users ON posts.username = users.username
+        left join likes on posts.id = likes.post_id
+        WHERE posts.photo IS NOT NULL
+        AND (
+            posts.username = %s
+            OR posts.username IN (
+                SELECT 
+                CASE 
+                    WHEN from_user = %s THEN to_user
+                    ELSE from_user
+                END
+                FROM friends
+                WHERE from_user = %s OR to_user = %s
+            )
         )
-    )
-
-    group by 
-    posts.id,
-    posts.photo,
-    users.profile_photo,
-    users.username,
-    users.name
-
-    ORDER BY posts.id DESC
-    """
-    cursor.execute(sql, (session["username"], session["username"], session["username"], session["username"], session["username"],))
-    posts = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        group by posts.id, posts.photo, users.profile_photo, users.username, users.name
+        ORDER BY posts.id DESC
+        """
+        cursor.execute(sql, (session["username"], session["username"], session["username"], session["username"], session["username"],))
+        posts = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("dashboard.html", posts=posts)
 
@@ -157,65 +142,56 @@ def dashboard():
 def profile(username):
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = "SELECT IFNULL(profile_photo, 'default.png') AS profile_photo FROM users WHERE username=%s"
+        cursor.execute(sql, (username,))
+        user = cursor.fetchone()
 
-    sql = "SELECT IFNULL(profile_photo, 'default.png') AS profile_photo FROM users WHERE username=%s"
-    cursor.execute(sql, (username,))
-    user = cursor.fetchone()
+        sql = "SELECT name, about FROM users WHERE username=%s"
+        cursor.execute(sql, (username,))
+        user1 = cursor.fetchone()
 
-    sql = "SELECT name, about FROM users WHERE username=%s"
-    cursor.execute(sql, (username,))
-    user1 = cursor.fetchone()
+        sql = """
+        SELECT 
+        users.*,
+        CASE
+             WHEN friend_request.from_user IS NOT NULL THEN 1
+             ELSE 0
+        END AS friend_request_by_user,
+        CASE 
+           WHEN friends.from_user IS NOT NULL THEN 1
+           ELSE 0
+        END AS already_friends
+        FROM users
+        LEFT JOIN friend_request
+        ON users.username = friend_request.to_user
+        AND friend_request.from_user = %s  
+        LEFT JOIN friends
+        ON (
+            (friends.from_user = %s AND friends.to_user = users.username)
+            OR
+            (friends.to_user = %s AND friends.from_user = users.username)
+        )
+        WHERE users.username = %s
+        """
+        cursor.execute(sql, (session["username"], session["username"], session["username"], username,))
+        req = cursor.fetchone()
 
-    sql = """
-    SELECT 
-    users.*,
-
-    CASE
-         WHEN friend_request.from_user IS NOT NULL THEN 1
-         ELSE 0
-    END AS friend_request_by_user,
-
-    CASE 
-       WHEN friends.from_user IS NOT NULL THEN 1
-       ELSE 0
-    END AS already_friends
-
-    FROM users
-
-    LEFT JOIN friend_request
-    ON users.username = friend_request.to_user
-    AND friend_request.from_user = %s  
-
-    LEFT JOIN friends
-    ON (
-        (friends.from_user = %s AND friends.to_user = users.username)
-        OR
-        (friends.to_user = %s AND friends.from_user = users.username)
-    )
-
-    WHERE users.username = %s
-    """
-    cursor.execute(sql, (session["username"], session["username"], session["username"], username,))
-    req = cursor.fetchone()
-
-    sql = """
-    SELECT 
-    users.username,
-    users.profile_photo,
-    users.name,
-    friend_request.*
-
-    FROM users
-    JOIN friend_request
-    ON users.username = friend_request.from_user
-
-    WHERE friend_request.to_user=%s
-    """
-    cursor.execute(sql, (session["username"],))
-    datas = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        sql = """
+        SELECT 
+        users.username,
+        users.profile_photo,
+        users.name,
+        friend_request.*
+        FROM users
+        JOIN friend_request ON users.username = friend_request.from_user
+        WHERE friend_request.to_user=%s
+        """
+        cursor.execute(sql, (session["username"],))
+        datas = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("profile.html", user=user, user1=user1, username=username, logged_user=session["username"], request=req, datas=datas)
 
@@ -224,37 +200,37 @@ def profile(username):
 def profile_edit():
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        if request.method == "POST":
+            file = request.files.get("photo")
 
-    if request.method == "POST":
-        file = request.files.get("photo")
+            if file and file.filename != "":
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                file.save(filepath)
 
-        if file and file.filename != "":
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-            file.save(filepath)
+                sql = "UPDATE users SET profile_photo=%s WHERE username=%s AND password=%s"
+                cursor.execute(sql, (filename, session["username"], session["password"],))
+                conn.commit()
 
-            sql = "UPDATE users SET profile_photo=%s WHERE username=%s AND password=%s"
-            cursor.execute(sql, (filename, session["username"], session["password"],))
-            conn.commit()
+            name = request.form.get("name")
+            about = request.form.get("about")
 
-        name = request.form.get("name")
-        about = request.form.get("about")
+            if name and about:
+                sql = "UPDATE users SET name=%s, about=%s WHERE username=%s AND password=%s"
+                cursor.execute(sql, (name, about, session["username"], session["password"],))
+                conn.commit()
 
-        if name and about:
-            sql = "UPDATE users SET name=%s, about=%s WHERE username=%s AND password=%s"
-            cursor.execute(sql, (name, about, session["username"], session["password"],))
-            conn.commit()
+        sql = "SELECT profile_photo FROM users WHERE username=%s AND password=%s"
+        cursor.execute(sql, (session["username"], session["password"],))
+        user = cursor.fetchone()
 
-    sql = "SELECT profile_photo FROM users WHERE username=%s AND password=%s"
-    cursor.execute(sql, (session["username"], session["password"],))
-    user = cursor.fetchone()
-
-    sql = "SELECT name, about FROM users WHERE username=%s AND password=%s"
-    cursor.execute(sql, (session["username"], session["password"]))
-    user1 = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
+        sql = "SELECT name, about FROM users WHERE username=%s AND password=%s"
+        cursor.execute(sql, (session["username"], session["password"]))
+        user1 = cursor.fetchone()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("profile_edit.html", user=user, user1=user1)
 
@@ -268,25 +244,25 @@ def home():
 def add_a_post():
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        if request.method == "POST":
+            file = request.files.get("photo")
 
-    if request.method == "POST":
-        file = request.files.get("photo")
+            if file and file.filename != "":
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                file.save(filepath)
 
-        if file and file.filename != "":
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-            file.save(filepath)
+                sql = "INSERT INTO posts (username, photo) VALUES(%s, %s)"
+                cursor.execute(sql, (session["username"], filename))
+                conn.commit()
 
-            sql = "INSERT INTO posts (username, photo) VALUES(%s, %s)"
-            cursor.execute(sql, (session["username"], filename))
-            conn.commit()
-
-    sql = "SELECT photo FROM posts WHERE username=%s ORDER BY id DESC LIMIT 1"
-    cursor.execute(sql, (session["username"],))
-    user = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
+        sql = "SELECT photo FROM posts WHERE username=%s ORDER BY id DESC LIMIT 1"
+        cursor.execute(sql, (session["username"],))
+        user = cursor.fetchone()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("add_a_post.html", user=user)
 
@@ -295,13 +271,13 @@ def add_a_post():
 def profile_photos(username):
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-
-    sql = "SELECT id, photo FROM posts WHERE username=%s AND photo IS NOT NULL AND photo != ''"
-    cursor.execute(sql, (username,))
-    users = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+    try:
+        sql = "SELECT id, photo FROM posts WHERE username=%s AND photo IS NOT NULL AND photo != ''"
+        cursor.execute(sql, (username,))
+        users = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("profile_photos.html", users=users, profile_owner=username, logged_user=session["username"])
 
@@ -310,15 +286,14 @@ def profile_photos(username):
 def delete_photo():
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-
-    photo_id = request.form["photo_id"]
-
-    sql = "DELETE FROM posts WHERE id=%s"
-    cursor.execute(sql, (photo_id,))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    try:
+        photo_id = request.form["photo_id"]
+        sql = "DELETE FROM posts WHERE id=%s"
+        cursor.execute(sql, (photo_id,))
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     return redirect("/profile_photos/" + session["username"])
 
@@ -331,13 +306,13 @@ def search():
         if name:
             conn = get_db()
             cursor = conn.cursor(dictionary=True, buffered=True)
-
-            sql = "SELECT name, username FROM users WHERE name=%s"
-            cursor.execute(sql, (name,))
-            user = cursor.fetchone()
-
-            cursor.close()
-            conn.close()
+            try:
+                sql = "SELECT name, username FROM users WHERE name=%s"
+                cursor.execute(sql, (name,))
+                user = cursor.fetchone()
+            finally:
+                cursor.close()
+                conn.close()
 
             if user:
                 return redirect(url_for("profile", username=user["username"]))
@@ -349,30 +324,30 @@ def search():
 def like(post_id):
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        username = session["username"]
 
-    username = session["username"]
-
-    sql = "SELECT * FROM likes WHERE post_id=%s AND username=%s"
-    cursor.execute(sql, (post_id, username,))
-    existing_like = cursor.fetchone()
-
-    if existing_like:
-        sql = "DELETE FROM likes WHERE post_id=%s AND username=%s"
+        sql = "SELECT * FROM likes WHERE post_id=%s AND username=%s"
         cursor.execute(sql, (post_id, username,))
-        liked = False
-    else:
-        sql = "INSERT INTO likes(post_id, username) VALUES(%s, %s)"
-        cursor.execute(sql, (post_id, username,))
-        liked = True
+        existing_like = cursor.fetchone()
 
-    conn.commit()
+        if existing_like:
+            sql = "DELETE FROM likes WHERE post_id=%s AND username=%s"
+            cursor.execute(sql, (post_id, username,))
+            liked = False
+        else:
+            sql = "INSERT INTO likes(post_id, username) VALUES(%s, %s)"
+            cursor.execute(sql, (post_id, username,))
+            liked = True
 
-    sql = "SELECT COUNT(*) AS total FROM likes WHERE post_id=%s"
-    cursor.execute(sql, (post_id,))
-    total_likes = cursor.fetchone()["total"]
+        conn.commit()
 
-    cursor.close()
-    conn.close()
+        sql = "SELECT COUNT(*) AS total FROM likes WHERE post_id=%s"
+        cursor.execute(sql, (post_id,))
+        total_likes = cursor.fetchone()["total"]
+    finally:
+        cursor.close()
+        conn.close()
 
     return jsonify({"liked": liked, "total_likes": total_likes})
 
@@ -381,40 +356,35 @@ def like(post_id):
 def comment_save(comment_id):
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        if request.method == "POST":
+            comment = request.form.get("comment")
 
-    if request.method == "POST":
-        comment = request.form.get("comment")
+            if comment:
+                sql = "INSERT INTO comments(comment_id, comment, username) VALUES(%s, %s, %s)"
+                cursor.execute(sql, (comment_id, comment, session["username"],))
+                conn.commit()
 
-        if comment:
-            sql = "INSERT INTO comments(comment_id, comment, username) VALUES(%s, %s, %s)"
-            cursor.execute(sql, (comment_id, comment, session["username"],))
-            conn.commit()
+                cursor.close()
+                conn.close()
 
-            cursor.close()
-            conn.close()
+                return redirect(url_for("comment_save", comment_id=comment_id))
 
-            return redirect(url_for("comment_save", comment_id=comment_id))
-
-    sql = """
-    SELECT comments.comment,
-    comments.username,
-    users.profile_photo,
-    users.name
-
-    FROM comments
-
-    JOIN users
-    ON comments.username = users.username
-
-    WHERE comments.comment_id=%s
-
-    ORDER BY comments.id ASC
-    """
-    cursor.execute(sql, (comment_id,))
-    comments = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        sql = """
+        SELECT comments.comment,
+        comments.username,
+        users.profile_photo,
+        users.name
+        FROM comments
+        JOIN users ON comments.username = users.username
+        WHERE comments.comment_id=%s
+        ORDER BY comments.id ASC
+        """
+        cursor.execute(sql, (comment_id,))
+        comments = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("comment.html", comments=comments)
 
@@ -422,18 +392,18 @@ def comment_save(comment_id):
 @app.route("/friends/<user>", methods=["GET", "POST"])
 def friends(user):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = "INSERT INTO friends(from_user, to_user) VALUES(%s, %s)"
+        cursor.execute(sql, (user, session["username"],))
 
-    sql = "INSERT INTO friends(from_user, to_user) VALUES(%s, %s)"
-    cursor.execute(sql, (user, session["username"],))
+        sql = "DELETE FROM friend_request WHERE from_user=%s AND to_user=%s"
+        cursor.execute(sql, (user, session["username"],))
 
-    sql = "DELETE FROM friend_request WHERE from_user=%s AND to_user=%s"
-    cursor.execute(sql, (user, session["username"],))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     return jsonify({"success": True})
 
@@ -441,23 +411,23 @@ def friends(user):
 @app.route("/friend_request/<to_user>", methods=["GET", "POST"])
 def friend_request(to_user):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-
-    sql = "SELECT * FROM friend_request WHERE to_user=%s AND from_user=%s"
-    cursor.execute(sql, (to_user, session["username"],))
-    requests = cursor.fetchone()
-
-    if requests:
-        sql = "DELETE FROM friend_request WHERE to_user=%s AND from_user=%s"
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = "SELECT * FROM friend_request WHERE to_user=%s AND from_user=%s"
         cursor.execute(sql, (to_user, session["username"],))
-    else:
-        sql = "INSERT INTO friend_request(to_user, from_user) VALUES(%s, %s)"
-        cursor.execute(sql, (to_user, session["username"],))
+        requests = cursor.fetchone()
 
-    conn.commit()
+        if requests:
+            sql = "DELETE FROM friend_request WHERE to_user=%s AND from_user=%s"
+            cursor.execute(sql, (to_user, session["username"],))
+        else:
+            sql = "INSERT INTO friend_request(to_user, from_user) VALUES(%s, %s)"
+            cursor.execute(sql, (to_user, session["username"],))
 
-    cursor.close()
-    conn.close()
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     return redirect(url_for("profile", username=to_user))
 
@@ -465,42 +435,30 @@ def friend_request(to_user):
 @app.route("/my_friends/<username>", methods=["GET", "POST"])
 def my_friends(username):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = """
+        SELECT 
+        users.username, users.profile_photo, users.name, friends.*
+        FROM users
+        JOIN friends ON users.username = friends.from_user
+        AND friends.to_user = %s
+        """
+        cursor.execute(sql, (username,))
+        datas2 = cursor.fetchall()
 
-    sql = """
-    SELECT 
-    users.username,
-    users.profile_photo,
-    users.name,
-    friends.*
-
-    FROM users
-    
-    JOIN friends
-    ON users.username = friends.from_user
-    AND friends.to_user = %s
-    """
-    cursor.execute(sql, (username,))
-    datas2 = cursor.fetchall()
-
-    sql = """
-    SELECT 
-    users.username,
-    users.profile_photo,
-    users.name,
-    friends.*
-
-    FROM users
-    
-    JOIN friends
-    ON users.username = friends.to_user
-    AND friends.from_user = %s
-    """
-    cursor.execute(sql, (username,))
-    datas3 = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        sql = """
+        SELECT 
+        users.username, users.profile_photo, users.name, friends.*
+        FROM users
+        JOIN friends ON users.username = friends.to_user
+        AND friends.from_user = %s
+        """
+        cursor.execute(sql, (username,))
+        datas3 = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("my_friends.html", datas2=datas2, logged_in_user=session["username"], username=username, datas3=datas3)
 
@@ -509,25 +467,19 @@ def my_friends(username):
 def notifications():
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-
-    sql = """
-    SELECT 
-    users.username,
-    users.profile_photo,
-    users.name,
-    friends.*
-
-    FROM users
-    
-    JOIN friends
-    ON users.username = friends.to_user
-    AND friends.from_user = %s
-    """
-    cursor.execute(sql, (session["username"],))
-    datas = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+    try:
+        sql = """
+        SELECT 
+        users.username, users.profile_photo, users.name, friends.*
+        FROM users
+        JOIN friends ON users.username = friends.to_user
+        AND friends.from_user = %s
+        """
+        cursor.execute(sql, (session["username"],))
+        datas = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return render_template("notifications.html", datas=datas)
 
@@ -535,14 +487,14 @@ def notifications():
 @app.route("/delete_request/<from_user>", methods=["GET", "POST"])
 def delete_request(from_user):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-
-    sql = "DELETE FROM friend_request WHERE from_user=%s AND to_user=%s"
-    cursor.execute(sql, (from_user, session["username"]))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = "DELETE FROM friend_request WHERE from_user=%s AND to_user=%s"
+        cursor.execute(sql, (from_user, session["username"]))
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     return redirect(url_for("profile", username=session["username"]))
 
@@ -550,14 +502,14 @@ def delete_request(from_user):
 @app.route("/make_unfriend1/<from_user>", methods=["GET", "POST"])
 def make_unfriend1(from_user):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-
-    sql = "DELETE FROM friends WHERE from_user=%s AND to_user=%s"
-    cursor.execute(sql, (from_user, session["username"]))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = "DELETE FROM friends WHERE from_user=%s AND to_user=%s"
+        cursor.execute(sql, (from_user, session["username"]))
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     return redirect(url_for("my_friends", username=session["username"]))
 
@@ -565,14 +517,14 @@ def make_unfriend1(from_user):
 @app.route("/make_unfriend2/<to_user>", methods=["GET", "POST"])
 def make_unfriend2(to_user):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-
-    sql = "DELETE FROM friends WHERE from_user=%s AND to_user=%s"
-    cursor.execute(sql, (session["username"], to_user))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = "DELETE FROM friends WHERE from_user=%s AND to_user=%s"
+        cursor.execute(sql, (session["username"], to_user))
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     return redirect(url_for("my_friends", username=session["username"]))
 
@@ -580,20 +532,618 @@ def make_unfriend2(to_user):
 @app.route("/deletePost/<int:postid>", methods=["GET", "POST"])
 def deletePost(postid):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-
-    sql = "DELETE FROM posts WHERE posts.id=%s AND username=%s"
-    cursor.execute(sql, (postid, session["username"],))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    try:
+        sql = "DELETE FROM posts WHERE posts.id=%s AND username=%s"
+        cursor.execute(sql, (postid, session["username"],))
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     return jsonify({"delete": True})
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+
+
+# from flask import Flask, request, session, redirect, url_for, render_template
+# import mysql.connector
+# from mysql.connector import pooling
+# import os
+# from werkzeug.utils import secure_filename
+# from flask import jsonify
+
+# app = Flask(__name__)
+
+# app.secret_key = os.getenv("SECRET_KEY")
+
+# UPLOAD_FOLDER = "static/uploads"
+# app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+# os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# db_pool = pooling.MySQLConnectionPool(
+#     pool_name="mypool",
+#     pool_size=5,
+#     host=os.getenv("DB_HOST"),
+#     user=os.getenv("DB_USER"),
+#     password=os.getenv("DB_PASSWORD"),
+#     database=os.getenv("DB_NAME"),
+#     port=int(os.getenv("MYSQLPORT", 3306))
+# )
+
+# def get_db():
+#     return db_pool.get_connection()
+
+
+# @app.route("/", methods=["GET", "POST"])
+# def login():
+#     msg = ""
+
+#     if request.method == "POST":
+#         username = request.form.get("username")
+#         password = request.form.get("password")
+
+#         if username and password:
+#             conn = get_db()
+#             cursor = conn.cursor(dictionary=True, buffered=True)
+
+#             sql = "SELECT * FROM users WHERE username=%s AND password=%s"
+#             cursor.execute(sql, (username, password,))
+#             account = cursor.fetchone()
+
+#             cursor.close()
+#             conn.close()
+
+#             if account:
+#                 session["logginid"] = account["id"]
+#                 session["username"] = account["username"]
+#                 session["password"] = account["password"]
+#                 return redirect(url_for("dashboard"))
+#             else:
+#                 msg = "Incorrect username or password"
+#         else:
+#             msg = "Fill both username and password"
+
+#     return render_template("login.html", msg=msg)
+
+
+# @app.route("/registration", methods=["GET", "POST"])
+# def registration():
+#     msg = ""
+
+#     if request.method == "POST":
+#         username = request.form.get("username")
+#         password = request.form.get("password")
+
+#         if username and password:
+#             conn = get_db()
+#             cursor = conn.cursor(dictionary=True, buffered=True)
+
+#             sql = "SELECT * FROM users WHERE username=%s"
+#             cursor.execute(sql, (username,))
+#             account = cursor.fetchone()
+
+#             if account:
+#                 msg = "You already have an account"
+#             else:
+#                 sql = "INSERT INTO users (username, password) VALUES(%s, %s)"
+#                 cursor.execute(sql, (username, password,))
+#                 conn.commit()
+#                 msg = "You have registered successfully"
+
+#             cursor.close()
+#             conn.close()
+#         else:
+#             msg = "Type both username and password"
+
+#     return render_template("registration.html", msg=msg)
+
+
+# @app.route("/dashboard", methods=["GET", "POST"])
+# def dashboard():
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     sql = """
+#     SELECT
+#     posts.id, 
+#     posts.photo, 
+#     users.profile_photo, 
+#     users.username, 
+#     users.name,
+
+#     count(likes.id) as like_count,
+
+#     sum(
+#          case
+#              when likes.username = %s then 1
+#              else 0
+#           end
+#     ) as liked_by_user
+
+#     FROM posts
+
+#     JOIN users
+#     ON posts.username = users.username
+
+#     left join likes
+#     on posts.id = likes.post_id
+  
+#     WHERE posts.photo IS NOT NULL
+#     AND (
+#         posts.username = %s
+#         OR posts.username IN (
+#             SELECT 
+#             CASE 
+#                 WHEN from_user = %s THEN to_user
+#                 ELSE from_user
+#             END
+#             FROM friends
+#             WHERE from_user = %s OR to_user = %s
+#         )
+#     )
+
+#     group by 
+#     posts.id,
+#     posts.photo,
+#     users.profile_photo,
+#     users.username,
+#     users.name
+
+#     ORDER BY posts.id DESC
+#     """
+#     cursor.execute(sql, (session["username"], session["username"], session["username"], session["username"], session["username"],))
+#     posts = cursor.fetchall()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("dashboard.html", posts=posts)
+
+
+# @app.route("/profile/<username>", methods=["GET", "POST"])
+# def profile(username):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     sql = "SELECT IFNULL(profile_photo, 'default.png') AS profile_photo FROM users WHERE username=%s"
+#     cursor.execute(sql, (username,))
+#     user = cursor.fetchone()
+
+#     sql = "SELECT name, about FROM users WHERE username=%s"
+#     cursor.execute(sql, (username,))
+#     user1 = cursor.fetchone()
+
+#     sql = """
+#     SELECT 
+#     users.*,
+
+#     CASE
+#          WHEN friend_request.from_user IS NOT NULL THEN 1
+#          ELSE 0
+#     END AS friend_request_by_user,
+
+#     CASE 
+#        WHEN friends.from_user IS NOT NULL THEN 1
+#        ELSE 0
+#     END AS already_friends
+
+#     FROM users
+
+#     LEFT JOIN friend_request
+#     ON users.username = friend_request.to_user
+#     AND friend_request.from_user = %s  
+
+#     LEFT JOIN friends
+#     ON (
+#         (friends.from_user = %s AND friends.to_user = users.username)
+#         OR
+#         (friends.to_user = %s AND friends.from_user = users.username)
+#     )
+
+#     WHERE users.username = %s
+#     """
+#     cursor.execute(sql, (session["username"], session["username"], session["username"], username,))
+#     req = cursor.fetchone()
+
+#     sql = """
+#     SELECT 
+#     users.username,
+#     users.profile_photo,
+#     users.name,
+#     friend_request.*
+
+#     FROM users
+#     JOIN friend_request
+#     ON users.username = friend_request.from_user
+
+#     WHERE friend_request.to_user=%s
+#     """
+#     cursor.execute(sql, (session["username"],))
+#     datas = cursor.fetchall()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("profile.html", user=user, user1=user1, username=username, logged_user=session["username"], request=req, datas=datas)
+
+
+# @app.route("/profile_edit", methods=["GET", "POST"])
+# def profile_edit():
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     if request.method == "POST":
+#         file = request.files.get("photo")
+
+#         if file and file.filename != "":
+#             filename = secure_filename(file.filename)
+#             filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+#             file.save(filepath)
+
+#             sql = "UPDATE users SET profile_photo=%s WHERE username=%s AND password=%s"
+#             cursor.execute(sql, (filename, session["username"], session["password"],))
+#             conn.commit()
+
+#         name = request.form.get("name")
+#         about = request.form.get("about")
+
+#         if name and about:
+#             sql = "UPDATE users SET name=%s, about=%s WHERE username=%s AND password=%s"
+#             cursor.execute(sql, (name, about, session["username"], session["password"],))
+#             conn.commit()
+
+#     sql = "SELECT profile_photo FROM users WHERE username=%s AND password=%s"
+#     cursor.execute(sql, (session["username"], session["password"],))
+#     user = cursor.fetchone()
+
+#     sql = "SELECT name, about FROM users WHERE username=%s AND password=%s"
+#     cursor.execute(sql, (session["username"], session["password"]))
+#     user1 = cursor.fetchone()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("profile_edit.html", user=user, user1=user1)
+
+
+# @app.route("/home", methods=["GET", "POST"])
+# def home():
+#     return redirect(url_for("dashboard"))
+
+
+# @app.route("/add_a_post", methods=["GET", "POST"])
+# def add_a_post():
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     if request.method == "POST":
+#         file = request.files.get("photo")
+
+#         if file and file.filename != "":
+#             filename = secure_filename(file.filename)
+#             filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+#             file.save(filepath)
+
+#             sql = "INSERT INTO posts (username, photo) VALUES(%s, %s)"
+#             cursor.execute(sql, (session["username"], filename))
+#             conn.commit()
+
+#     sql = "SELECT photo FROM posts WHERE username=%s ORDER BY id DESC LIMIT 1"
+#     cursor.execute(sql, (session["username"],))
+#     user = cursor.fetchone()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("add_a_post.html", user=user)
+
+
+# @app.route("/profile_photos/<username>", methods=["GET", "POST"])
+# def profile_photos(username):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     sql = "SELECT id, photo FROM posts WHERE username=%s AND photo IS NOT NULL AND photo != ''"
+#     cursor.execute(sql, (username,))
+#     users = cursor.fetchall()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("profile_photos.html", users=users, profile_owner=username, logged_user=session["username"])
+
+
+# @app.route("/delete_photo", methods=["POST"])
+# def delete_photo():
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     photo_id = request.form["photo_id"]
+
+#     sql = "DELETE FROM posts WHERE id=%s"
+#     cursor.execute(sql, (photo_id,))
+#     conn.commit()
+
+#     cursor.close()
+#     conn.close()
+
+#     return redirect("/profile_photos/" + session["username"])
+
+
+# @app.route("/search", methods=["GET", "POST"])
+# def search():
+#     if request.method == "POST":
+#         name = request.form.get("name")
+
+#         if name:
+#             conn = get_db()
+#             cursor = conn.cursor(dictionary=True, buffered=True)
+
+#             sql = "SELECT name, username FROM users WHERE name=%s"
+#             cursor.execute(sql, (name,))
+#             user = cursor.fetchone()
+
+#             cursor.close()
+#             conn.close()
+
+#             if user:
+#                 return redirect(url_for("profile", username=user["username"]))
+
+#     return redirect("/dashboard")
+
+
+# @app.route("/like/<int:post_id>", methods=["POST"])
+# def like(post_id):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     username = session["username"]
+
+#     sql = "SELECT * FROM likes WHERE post_id=%s AND username=%s"
+#     cursor.execute(sql, (post_id, username,))
+#     existing_like = cursor.fetchone()
+
+#     if existing_like:
+#         sql = "DELETE FROM likes WHERE post_id=%s AND username=%s"
+#         cursor.execute(sql, (post_id, username,))
+#         liked = False
+#     else:
+#         sql = "INSERT INTO likes(post_id, username) VALUES(%s, %s)"
+#         cursor.execute(sql, (post_id, username,))
+#         liked = True
+
+#     conn.commit()
+
+#     sql = "SELECT COUNT(*) AS total FROM likes WHERE post_id=%s"
+#     cursor.execute(sql, (post_id,))
+#     total_likes = cursor.fetchone()["total"]
+
+#     cursor.close()
+#     conn.close()
+
+#     return jsonify({"liked": liked, "total_likes": total_likes})
+
+
+# @app.route("/comment_save/<int:comment_id>", methods=["GET", "POST"])
+# def comment_save(comment_id):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     if request.method == "POST":
+#         comment = request.form.get("comment")
+
+#         if comment:
+#             sql = "INSERT INTO comments(comment_id, comment, username) VALUES(%s, %s, %s)"
+#             cursor.execute(sql, (comment_id, comment, session["username"],))
+#             conn.commit()
+
+#             cursor.close()
+#             conn.close()
+
+#             return redirect(url_for("comment_save", comment_id=comment_id))
+
+#     sql = """
+#     SELECT comments.comment,
+#     comments.username,
+#     users.profile_photo,
+#     users.name
+
+#     FROM comments
+
+#     JOIN users
+#     ON comments.username = users.username
+
+#     WHERE comments.comment_id=%s
+
+#     ORDER BY comments.id ASC
+#     """
+#     cursor.execute(sql, (comment_id,))
+#     comments = cursor.fetchall()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("comment.html", comments=comments)
+
+
+# @app.route("/friends/<user>", methods=["GET", "POST"])
+# def friends(user):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True)
+
+#     sql = "INSERT INTO friends(from_user, to_user) VALUES(%s, %s)"
+#     cursor.execute(sql, (user, session["username"],))
+
+#     sql = "DELETE FROM friend_request WHERE from_user=%s AND to_user=%s"
+#     cursor.execute(sql, (user, session["username"],))
+
+#     conn.commit()
+
+#     cursor.close()
+#     conn.close()
+
+#     return jsonify({"success": True})
+
+
+# @app.route("/friend_request/<to_user>", methods=["GET", "POST"])
+# def friend_request(to_user):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True)
+
+#     sql = "SELECT * FROM friend_request WHERE to_user=%s AND from_user=%s"
+#     cursor.execute(sql, (to_user, session["username"],))
+#     requests = cursor.fetchone()
+
+#     if requests:
+#         sql = "DELETE FROM friend_request WHERE to_user=%s AND from_user=%s"
+#         cursor.execute(sql, (to_user, session["username"],))
+#     else:
+#         sql = "INSERT INTO friend_request(to_user, from_user) VALUES(%s, %s)"
+#         cursor.execute(sql, (to_user, session["username"],))
+
+#     conn.commit()
+
+#     cursor.close()
+#     conn.close()
+
+#     return redirect(url_for("profile", username=to_user))
+
+
+# @app.route("/my_friends/<username>", methods=["GET", "POST"])
+# def my_friends(username):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True)
+
+#     sql = """
+#     SELECT 
+#     users.username,
+#     users.profile_photo,
+#     users.name,
+#     friends.*
+
+#     FROM users
+    
+#     JOIN friends
+#     ON users.username = friends.from_user
+#     AND friends.to_user = %s
+#     """
+#     cursor.execute(sql, (username,))
+#     datas2 = cursor.fetchall()
+
+#     sql = """
+#     SELECT 
+#     users.username,
+#     users.profile_photo,
+#     users.name,
+#     friends.*
+
+#     FROM users
+    
+#     JOIN friends
+#     ON users.username = friends.to_user
+#     AND friends.from_user = %s
+#     """
+#     cursor.execute(sql, (username,))
+#     datas3 = cursor.fetchall()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("my_friends.html", datas2=datas2, logged_in_user=session["username"], username=username, datas3=datas3)
+
+
+# @app.route("/notifications", methods=["GET", "POST"])
+# def notifications():
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True, buffered=True)
+
+#     sql = """
+#     SELECT 
+#     users.username,
+#     users.profile_photo,
+#     users.name,
+#     friends.*
+
+#     FROM users
+    
+#     JOIN friends
+#     ON users.username = friends.to_user
+#     AND friends.from_user = %s
+#     """
+#     cursor.execute(sql, (session["username"],))
+#     datas = cursor.fetchall()
+
+#     cursor.close()
+#     conn.close()
+
+#     return render_template("notifications.html", datas=datas)
+
+
+# @app.route("/delete_request/<from_user>", methods=["GET", "POST"])
+# def delete_request(from_user):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True)
+
+#     sql = "DELETE FROM friend_request WHERE from_user=%s AND to_user=%s"
+#     cursor.execute(sql, (from_user, session["username"]))
+#     conn.commit()
+
+#     cursor.close()
+#     conn.close()
+
+#     return redirect(url_for("profile", username=session["username"]))
+
+
+# @app.route("/make_unfriend1/<from_user>", methods=["GET", "POST"])
+# def make_unfriend1(from_user):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True)
+
+#     sql = "DELETE FROM friends WHERE from_user=%s AND to_user=%s"
+#     cursor.execute(sql, (from_user, session["username"]))
+#     conn.commit()
+
+#     cursor.close()
+#     conn.close()
+
+#     return redirect(url_for("my_friends", username=session["username"]))
+
+
+# @app.route("/make_unfriend2/<to_user>", methods=["GET", "POST"])
+# def make_unfriend2(to_user):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True)
+
+#     sql = "DELETE FROM friends WHERE from_user=%s AND to_user=%s"
+#     cursor.execute(sql, (session["username"], to_user))
+#     conn.commit()
+
+#     cursor.close()
+#     conn.close()
+
+#     return redirect(url_for("my_friends", username=session["username"]))
+
+
+# @app.route("/deletePost/<int:postid>", methods=["GET", "POST"])
+# def deletePost(postid):
+#     conn = get_db()
+#     cursor = conn.cursor(dictionary=True)
+
+#     sql = "DELETE FROM posts WHERE posts.id=%s AND username=%s"
+#     cursor.execute(sql, (postid, session["username"],))
+#     conn.commit()
+
+#     cursor.close()
+#     conn.close()
+
+#     return jsonify({"delete": True})
+
+
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
 
 
 # from flask import Flask, request, session, redirect, url_for, render_template
